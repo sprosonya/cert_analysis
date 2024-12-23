@@ -184,9 +184,9 @@ func analysisDifBetweenLogs(mas map[string]*InfoAboutTime) []StrangeCaseLogs {
 		strangeCase := StrangeCaseLogs{info: *info, difs: make([]SmallDifLogs, 0)}
 		for i := 0; i < len(info.mas); i++ {
 			for j := i + 1; j < len(info.mas); j++ {
-				dif := info.mas[i].time.UTC().Sub(info.mas[j].time.UTC())
+				dif := info.mas[i].time.Sub(info.mas[j].time)
 				if dif.Milliseconds() == 0 {
-					smallDif := SmallDifLogs{log1: info.mas[i].log, log2: info.mas[j].log, timeLog1: info.mas[i].time.UTC(), timeLog2: info.mas[j].time.UTC(), dif: dif, typeCert1: info.mas[i].certType, typeCert2: info.mas[j].certType, index1: info.mas[i].index, index2: info.mas[j].index}
+					smallDif := SmallDifLogs{log1: info.mas[i].log, log2: info.mas[j].log, timeLog1: info.mas[i].time, timeLog2: info.mas[j].time, dif: dif, typeCert1: info.mas[i].certType, typeCert2: info.mas[j].certType, index1: info.mas[i].index, index2: info.mas[j].index}
 					strangeCase.difs = append(strangeCase.difs, smallDif)
 					caseManyLogs = append(caseManyLogs, strangeCase)
 				}
@@ -200,26 +200,26 @@ func analysisDifBetweenLogAndCert(mas map[string]*InfoAboutTime) []StrangeCase1L
 	cases := make([]StrangeCase1Log, 0)
 	for _, info := range mas {
 		for _, logInfo := range info.mas {
-			if info.cert.NotAfter.UTC().Before(logInfo.log.start) || info.cert.NotAfter.UTC().After(logInfo.log.end) {
+			if info.cert.NotAfter.Before(logInfo.log.start) || info.cert.NotAfter.After(logInfo.log.end) {
 				var dif time.Duration
-				if info.cert.NotAfter.UTC().Before(logInfo.log.start) {
-					dif = logInfo.log.start.Sub(info.cert.NotAfter.UTC())
+				if info.cert.NotAfter.Before(logInfo.log.start) {
+					dif = logInfo.log.start.Sub(info.cert.NotAfter)
 				} else {
-					dif = info.cert.NotAfter.UTC().Sub(logInfo.log.end)
+					dif = info.cert.NotAfter.Sub(logInfo.log.end)
 				}
-				strangeCase := StrangeCase1Log{info: *info, log: logInfo.log, timeLog: logInfo.time.UTC(), reason: "wrongLog", typeCert: logInfo.certType, dif: dif, index: logInfo.index}
+				strangeCase := StrangeCase1Log{info: *info, log: logInfo.log, timeLog: logInfo.time, reason: "wrongLog", typeCert: logInfo.certType, dif: dif, index: logInfo.index}
 				cases = append(cases, strangeCase)
 			}
 
-			if info.cert.NotBefore.UTC().After(logInfo.time.UTC()) {
-				strangeCase := StrangeCase1Log{info: *info, log: logInfo.log, timeLog: logInfo.time.UTC(), reason: "timeInLogEarlierThanReleaseTime", typeCert: logInfo.certType, dif: info.cert.NotBefore.UTC().Sub(logInfo.time.UTC()), index: logInfo.index}
+			if info.cert.NotBefore.After(logInfo.time) {
+				strangeCase := StrangeCase1Log{info: *info, log: logInfo.log, timeLog: logInfo.time, reason: "timeInLogEarlierThanReleaseTime", typeCert: logInfo.certType, dif: info.cert.NotBefore.Sub(logInfo.time), index: logInfo.index}
 				cases = append(cases, strangeCase)
 				continue
 			}
 
-			dif := logInfo.time.UTC().Sub(info.cert.NotBefore.UTC())
+			dif := logInfo.time.Sub(info.cert.NotBefore)
 			if dif.Milliseconds() <= 50 {
-				strangeCase := StrangeCase1Log{info: *info, log: logInfo.log, timeLog: logInfo.time.UTC(), dif: dif, reason: "tooSmallDifBetweenReleaseAndLogTime", typeCert: logInfo.certType, index: logInfo.index}
+				strangeCase := StrangeCase1Log{info: *info, log: logInfo.log, timeLog: logInfo.time, dif: dif, reason: "tooSmallDifBetweenReleaseAndLogTime", typeCert: logInfo.certType, index: logInfo.index}
 				cases = append(cases, strangeCase)
 			}
 		}
@@ -233,8 +233,8 @@ func buildingHistogramBetweenLogs(mas map[string]*InfoAboutTime) *charts.Bar {
 		var maxDif time.Duration
 		for i := 0; i < len(info.mas); i++ {
 			for j := i + 1; j < len(info.mas); j++ {
-				dif1 := info.mas[i].time.UTC().Sub(info.mas[j].time.UTC())
-				dif2 := info.mas[j].time.UTC().Sub(info.mas[i].time.UTC())
+				dif1 := info.mas[i].time.Sub(info.mas[j].time)
+				dif2 := info.mas[j].time.Sub(info.mas[i].time)
 				maxDifCur := max(dif1, dif2)
 				if maxDifCur > maxDif {
 					maxDif = maxDifCur
@@ -258,7 +258,7 @@ func buildingHistogramBetweenLogs(mas map[string]*InfoAboutTime) *charts.Bar {
 	bar := newBar("Varying of LogTime difference")
 	bar.SetXAxis(barNames).AddSeries("number of certificates in logs", items)
 	bar.SetGlobalOptions(
-		charts.WithYAxisOpts(opts.YAxis{Type: "value"}),
+		charts.WithYAxisOpts(opts.YAxis{Type: "log"}),
 		charts.WithDataZoomOpts(opts.DataZoom{
 			Type:  "slider",
 			Start: 0,
@@ -274,18 +274,12 @@ func buildingHistogramBetweenLogAndCert(mas map[string]*InfoAboutTime) *charts.B
 	maxValue := -10000000000
 	minValue := 1000000000
 	for _, info := range mas {
-		minDif := 100000000
+		minDif := int(info.mas[0].time.Sub(info.cert.NotBefore).Seconds())
 		for _, logInfo := range info.mas {
-			dif := logInfo.time.UTC().Sub(info.cert.NotBefore.UTC())
-			if int(math.Floor(dif.Seconds())) < minDif {
-				minDif = int(math.Floor(dif.Seconds()))
-			}
-			if int(math.Floor(dif.Seconds())) > maxValue {
-				maxValue = int(math.Floor(dif.Seconds()))
-			}
-			if int(math.Floor(dif.Seconds())) < minValue {
-				minValue = int(math.Floor(dif.Seconds()))
-			}
+			dif := int(math.Floor(logInfo.time.Sub(info.cert.NotBefore).Seconds()))
+			minDif = min(minDif, dif)
+			maxValue = max(maxValue, dif)
+			minValue = min(minValue, dif)
 		}
 		difs[minDif] += 1
 	}
@@ -301,7 +295,7 @@ func buildingHistogramBetweenLogAndCert(mas map[string]*InfoAboutTime) *charts.B
 	bar := newBar("Varying of LogTime and ReleaseTime difference")
 	bar.SetXAxis(barNames).AddSeries("number of certificates", items)
 	bar.SetGlobalOptions(
-		charts.WithYAxisOpts(opts.YAxis{Type: "value"}),
+		charts.WithYAxisOpts(opts.YAxis{Type: "log"}),
 		charts.WithDataZoomOpts(opts.DataZoom{
 			Type:  "slider",
 			Start: 0,
@@ -339,7 +333,7 @@ func analysisTimeInLog(mas map[string]*InfoAboutTime) *charts.Bar {
 func analysisTimeRelease(mas map[string]*InfoAboutTime) *charts.Bar {
 	hours := make(map[int][]*ctX509.Certificate)
 	for _, info := range mas {
-		hours[info.cert.NotBefore.UTC().Hour()] = append(hours[info.cert.NotBefore.UTC().Hour()], info.cert)
+		hours[info.cert.NotBefore.Hour()] = append(hours[info.cert.NotBefore.Hour()], info.cert)
 	}
 	barNames := make([]string, 0)
 	items := make([]opts.BarData, 0)
@@ -417,7 +411,7 @@ func createCSVsData(mas1Log []StrangeCase1Log, masManyLogs []StrangeCaseLogs) ([
 				fmt.Sprint(info.index),
 				info.log.Name,
 				strconv.Itoa(info.log.Year),
-				info.info.cert.NotAfter.UTC().Format("2006-01-02 15:04:05.000"),
+				info.info.cert.NotAfter.Format("2006-01-02 15:04:05.000"),
 				info.dif.String(),
 				base64.StdEncoding.EncodeToString(info.info.cert.Raw),
 			}
@@ -443,7 +437,7 @@ func createCSVsData(mas1Log []StrangeCase1Log, masManyLogs []StrangeCaseLogs) ([
 				info.log.Name,
 				strconv.Itoa(info.log.Year),
 				info.timeLog.UTC().Format("2006-01-02 15:04:05.000"),
-				info.info.cert.NotBefore.UTC().Format("2006-01-02 15:04:05.000"),
+				info.info.cert.NotBefore.Format("2006-01-02 15:04:05.000"),
 				info.dif.String(),
 				base64.StdEncoding.EncodeToString(info.info.cert.Raw),
 			}
@@ -469,7 +463,7 @@ func createCSVsData(mas1Log []StrangeCase1Log, masManyLogs []StrangeCaseLogs) ([
 				info.log.Name,
 				strconv.Itoa(info.log.Year),
 				info.timeLog.UTC().Format("2006-01-02 15:04:05.000"),
-				info.info.cert.NotBefore.UTC().Format("2006-01-02 15:04:05.000"),
+				info.info.cert.NotBefore.Format("2006-01-02 15:04:05.000"),
 				info.dif.String(),
 				base64.StdEncoding.EncodeToString(info.info.cert.Raw)}
 			dataTooSmallDif = append(dataTooSmallDif, str)
