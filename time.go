@@ -12,7 +12,6 @@ import (
 	ct "github.com/google/certificate-transparency-go"
 	ctX509 "github.com/google/certificate-transparency-go/x509"
 	"io"
-	logger "log"
 	"math"
 	"net/http"
 	"os"
@@ -130,7 +129,7 @@ func getAndParseCerts(startIndex int64, endIndex int64, masInfo map[string]*Info
 		for j, leafEntry := range certs.Entries {
 			parsedEntry, err := ct.LogEntryFromLeaf(i+int64(j), &leafEntry)
 			if err != nil {
-				fmt.Printf(err.Error())
+				fmt.Println(err.Error())
 			}
 			var cert *ctX509.Certificate
 			if parsedEntry.X509Cert != nil {
@@ -149,7 +148,7 @@ func getAndParseCerts(startIndex int64, endIndex int64, masInfo map[string]*Info
 				logTime := LogTime{log, "precert", time.UnixMilli(int64(parsedEntry.Leaf.TimestampedEntry.Timestamp)), parsedEntry.Index}
 				cert, err = ctX509.ParseCertificate(parsedEntry.Precert.Submitted.Data)
 				if err != nil {
-					logger.Println("Error parsing precert:", err)
+					fmt.Println(err)
 					continue
 				}
 				info, ok := masInfo[cert.SerialNumber.String()]
@@ -365,6 +364,7 @@ func plot(mas map[string]*InfoAboutTime, html string) {
 	}
 	page.Render(io.MultiWriter(f))
 	f.WriteString(html)
+	fmt.Println("plot.html успешно создан")
 }
 
 func newBar(title string) *charts.Bar {
